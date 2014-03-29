@@ -10,7 +10,7 @@ using namespace std;
 using namespace cv;
 
 /** Function Headers */
-bool detect_face( Mat frame );
+size_t detect_face( Mat frame );
 
 /** Global variables */
 String face_cascade_name = "haarcascade_frontalface_alt.xml";
@@ -35,12 +35,12 @@ int main(int argc, char** argv)
 		cout << "could not open or find the image" << endl;
 		return -1;
 	} 
-	bool have_face = detect_face(frame);
-	return have_face ? 0 : 1;
+	size_t num_face = detect_face(frame);
+	return num_face;
 }
 
 /** @function detectAndDisplay */
-bool detect_face( Mat frame )
+size_t detect_face( Mat frame )
 {
 	std::vector<Rect> faces;
 	Mat frame_gray;
@@ -50,26 +50,6 @@ bool detect_face( Mat frame )
 
 	//-- Detect faces
 	face_cascade.detectMultiScale( frame_gray, faces, 1.1, 2, 0|CASCADE_SCALE_IMAGE, Size(30, 30) );
-	/*
-	   for ( size_t i = 0; i < faces.size(); i++ )
-	   {
-	   Point center( faces[i].x + faces[i].width/2, faces[i].y + faces[i].height/2 );
-	   ellipse( frame, center, Size( faces[i].width/2, faces[i].height/2 ), 0, 0, 360, Scalar( 255, 0, 255 ), 4, 8, 0 );
-
-	   Mat faceROI = frame_gray( faces[i] );
-	   std::vector<Rect> eyes;
-
-	//-- In each face, detect eyes
-	eyes_cascade.detectMultiScale( faceROI, eyes, 1.1, 2, 0 |CASCADE_SCALE_IMAGE, Size(30, 30) );
-
-	for ( size_t j = 0; j < eyes.size(); j++ )
-	{
-	Point eye_center( faces[i].x + eyes[j].x + eyes[j].width/2, faces[i].y + eyes[j].y + eyes[j].height/2 );
-	int radius = cvRound( (eyes[j].width + eyes[j].height)*0.25 );
-	circle( frame, eye_center, radius, Scalar( 255, 0, 0 ), 4, 8, 0 );
-	}
-	}
-	*/
-	return !faces.empty();
+	return faces.size();
 
 }

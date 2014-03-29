@@ -4,7 +4,7 @@ LIBS=`pkg-config --libs opencv`
 
 
 all: FaceDetection.o
-	$(CC) -o FaceDetection $^ $(LIBS)
+	$(CC) -o FaceDetection.out $^ $(LIBS)
 
 %.o: %.cpp
 	$(CC) -c -o $@ $< $(CFLAGS)
