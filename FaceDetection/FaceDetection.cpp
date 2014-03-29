@@ -33,7 +33,7 @@ int main(int argc, char** argv)
 	frame = imread(image_path,CV_LOAD_IMAGE_COLOR);
 	if(!frame.data){
 		cout << "could not open or find the image" << endl;
-		return -1;
+		return 0;
 	} 
 	size_t num_face = detect_face(frame);
 	return num_face;
