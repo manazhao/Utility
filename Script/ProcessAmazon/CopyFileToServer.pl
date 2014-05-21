@@ -6,8 +6,10 @@ use warnings;
 my %server_file_map = (
 	"irkm-1" => ["AmazonBeautyData.tar.gz","AmazonToyGameData.tar.gz", "AmazonToyGameData_part2.tar.gz"],
 	"irkm-2" => ["HealthPersonalData.tar.gz", "AmazonGroceryGourmetFoodData.tar.gz"],
-	"irkm-3" => ["AmazonMovieData.tar.gz", "AmazonKindleStoreData.tar.gz", "AmazonElectronicData.tar.bz2"],
-	"irk-4" => ["AmazonShoeData.tar.gz", "AmazonClothingAccessoriesData.tar.bz2"]
+	"irkm-3" => ["AmazonMovieData.tar.gz", "AmazonKindleStoreData.tar.gz",
+#	       	"AmazonElectronicData.tar.bz2"
+	],
+	"irkm-4" => ["AmazonShoeData.tar.gz", "AmazonClothingAccessoriesData.tar.bz2"]
 );
 
 
