@@ -5,7 +5,7 @@
 use strict;
 use warnings;
 
-foreach(3..4){
+foreach(5..6){
 	my $input_folder = "/home/qzhao2/irkm-drives/$_/data/amazon_user/author_photo/images-na.ssl-images-amazon.com/images/I";
 	my $output_folder = "/home/qzhao2/irkm-drives/$_/data/amazon_user/author_photo";
 	my $demo_file = $output_folder . "/author_demo.json";
