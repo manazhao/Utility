@@ -2,6 +2,7 @@
 #
 use strict;
 use warnings;
+use IO::Zlib;
 use Getopt::Long;
 
 my $list_file;
@@ -42,8 +43,19 @@ if(-f $result_position_file){
 open POSITION_FILE, ">>", $result_position_file or die $!;
 open RESULT_FILE, ">>", $result_file or die $!;
 
+# gz reader instance
+my $GZ_FH = new IO::Zlib;
+
 foreach my $file(@file_list){
-	my $content = `cat $file|tr "\n" ' '`;	
+	# use quote to preserve space characters
+	my $content;
+	if($file =~ m/\.gz$/g){
+		# use IO::Zlib to read
+		$content = readGZ($file,$GZ_FH);
+	}else{
+		$content = `cat "$file"|tr "\n" ' '`;	
+	}
+	next if !$content;
 	# get position
 	my $pos = tell RESULT_FILE;
 	die "wrong file offset:$!" if $pos == -1;
@@ -55,3 +67,14 @@ close POSITION_FILE;
 
 # now start to write to file
 
+sub  readGZ{
+	my ($file,$fh) = @_;
+	my $content;
+	if( $fh->open($file,"rb")){
+		my @lines = <$fh>;
+		$fh->close();
+		$content = join("",@lines);
+		$content =~ s/\n//g;
+	}
+	return $content;
+}
