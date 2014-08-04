@@ -6,17 +6,19 @@ use Getopt::Long;
 
 my $fb_email;
 my $fb_pwd;
-my $git_home ;
 my $work_dir;
 
-GetOptions("email=s" => \$fb_email, "password=s" => \$fb_pwd, "git-home=s" => \$git_home,"wd=s"=>\$work_dir) or die $!;
-$fb_email and $fb_pwd and $git_home and $work_dir or usage();
+GetOptions("email=s" => \$fb_email, "password=s" => \$fb_pwd, "wd=s"=>\$work_dir) or die $!;
+$fb_email and $fb_pwd  and $work_dir or usage();
 -d $work_dir or die "working directory: $work_dir does not exist\n";
 # switch to working directory
 chdir $work_dir;
 # settings
-my $fb_program = "$git_home/Utility/Script/ProcessAmazon/InteractFacebook.pl";
+my $fb_program = "InteractFacebook.pl";
 -f $fb_program or die "InteractFacebook.pl takes the wrong path:$!";
+
+my $amazon_profile_fblink_file = 'amazon_profile_fb';
+
 # file that maps amazon user id to facebook url
 my $author_fb_file = `ls *author_profile_facebook.csv 2>/dev/null`;
 chomp $author_fb_file;

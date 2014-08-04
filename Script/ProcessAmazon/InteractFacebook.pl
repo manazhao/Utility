@@ -52,6 +52,8 @@ while(<>){
 		$aboutPage =~ s/\s+/ /g;
 		# write to file
 		my $file_name = $page_dir . "/" . $line . "_about.html";
+		# skip the file if exists
+		-f $file_name and next;
 		open my $tmp_fh, ">" ,$file_name or die $!;
 		print $tmp_fh $aboutPage;
 		close $tmp_fh;

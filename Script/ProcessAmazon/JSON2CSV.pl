@@ -11,16 +11,17 @@ use JSON;
 my $json_file;
 my $field_list;
 my $csv_file;
+my $header = 0;
 
-GetOptions("json=s" => \$json_file, "field=s" => \$field_list, "csv=s" => \$csv_file) or die $!;
-$json_file and $field_list and $csv_file or usage();
+GetOptions("json=s" => \$json_file, "field=s" => \$field_list, "csv=s" => \$csv_file, "header=i" => \$header) or die $!;
+$json_file and $field_list and $csv_file and defined $header or usage();
 
 open my $json_fh, "<", $json_file or die $!;
 open my $csv_fh, ">", $csv_file or die $!;
 
 my @fields = split /\,/, $field_list;
 
-print $csv_fh join(",",@fields) . "\n";
+$header and print $csv_fh join(",",@fields) . "\n";
 
 while(<$json_fh>){
 	chomp;
@@ -40,7 +41,11 @@ close $csv_fh;
 
 sub usage{
 	my $usage = <<EOF;
-perl $0 --json=<input json file> --field=<target fields separted by comma>
+perl $0 [options]
+	--json			input json file 
+	--csv			output csv file
+	--field			target fields separted by comma
+	--header		whether to write header as the first line
 
 EOF
 	print $usage;

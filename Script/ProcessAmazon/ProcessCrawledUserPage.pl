@@ -12,9 +12,7 @@ my $wd;
 my $target_name;
 my $parser;
 
-GetOptions("wd=s" => \$wd, "target=s" => \$target_name, "parser=s" => \$parser) or  die $!;
-
-$wd and $target_name and $parser or usage();
+GetOptions("wd=s" => \$wd, "target" => \$target_name, "parser=s" => \$parser) or usage();
 
 # change the work directory
 chdir $wd;
@@ -22,7 +20,7 @@ chdir $wd;
 my $list_file = "$target_name.list";
 # find all html files and write the result to $list_file
 my $page_dir = "$target_name" . "_pages";
-my $gen_list_cmd = "find $page_dir -type f -not -name \"*.log\" > $list_file";
+my $gen_list_cmd = "find $page_dir -type f -not -name *.log > $list_file";
 if(not -f $list_file){
 	print ">>> " . $gen_list_cmd . "\n";
 	`$gen_list_cmd`;
@@ -38,8 +36,7 @@ my $pos_file = $target_name . "_pos.csv";
 my $link_file_program = "LinkFile.pl";
 my $link_log_file = $target_name . "_link.log";
 my $link_file_cmd = "$link_file_program --list=$list_file --output=$linked_file --pos=$pos_file > $link_log_file 2>&1";
-
-if(not -f $linked_file){
+if(not exists $linked_file and not exists $pos_file){
 	print ">>> " . $link_file_cmd . "\n";
 	`$link_file_cmd`;
 }else{
@@ -50,8 +47,9 @@ if(not -f $linked_file){
 my $parser_program = "crawler_console parser ";
 my $parsed_file = $target_name . "_parsed.json";
 my $parse_message_file = $target_name . "_parsed.status";
-my $parser_cmd = "$parser_program --page-file=$linked_file --pos-file=$pos_file --parsed-file=$parsed_file --message-file=$parse_message_file --parser-class=$parser";
-if(not -f $parsed_file){
+my $parserName = "Amazon/AuthorParser";
+my $parser_cmd = "$parser_program --page-file=$linked_file --pos-file=$pos_file --parsed-file=$parsed_file --message-file=$parse_message_file --parser-class=$parserName";
+if(not exists $parsed_file){
 	print ">>> " . $parser_cmd . "\n";
 	`$parser_cmd`;
 }else{
@@ -60,7 +58,7 @@ if(not -f $parsed_file){
 
 sub usage{
 	my $usage = <<EOF;
-$0 [options]
+	$0 [options]
 	--wd		working directory
 	--target	directory that containing the crawled pages	
 	--parser	parser will be used to parse the pages
