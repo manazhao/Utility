@@ -22,7 +22,7 @@ chdir $wd;
 my $list_file = "$target_name.list";
 # find all html files and write the result to $list_file
 my $page_dir = "$target_name" . "_pages";
-my $gen_list_cmd = "find $page_dir -type f -not -name \"*.log\" > $list_file";
+my $gen_list_cmd = "find -L $page_dir -type f -not -name \"*.log\" > $list_file";
 if(not -f $list_file){
 	print ">>> " . $gen_list_cmd . "\n";
 	`$gen_list_cmd`;

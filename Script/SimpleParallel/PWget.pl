@@ -23,7 +23,7 @@ my $result_dir = $url_file . "_pages";
 chdir $result_dir;
 
 my $log_file = "./wget.log";
-my $wget_cmd = "wget -b -i $url_file  -o $log_file -t 10 -w 3  -U 'Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.1.6) Gecko/20070802 SeaMonkey/1.1.4' ";
+my $wget_cmd = "wget -b -i $url_file  -o $log_file -t 10 -w 3  -nc -U 'Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.1.6) Gecko/20070802 SeaMonkey/1.1.4' ";
 print $wget_cmd . "\n";
 `$wget_cmd`;
 

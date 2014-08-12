@@ -36,6 +36,7 @@ while(<>){
 	my $line = $_;
 	next if $line eq "";
 	if($task eq "getUserName"){
+		sleep 3;
 		my $response = download_url($line);
 		# find the about linke
 		if($response =~ m/href=".*?\/([^\/]+?)\/about"\s+data\-medley\-id="pagelet_timeline_medley_about"/g){
