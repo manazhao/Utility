@@ -18,6 +18,16 @@ $wd and $target_name and $parser or usage();
 
 # change the work directory
 chdir $wd;
+# target name could be wildcard
+$target_name = `ls |grep $target_name."_pages"`;
+chomp $target_name;
+# remove _pages
+$target_name =~ s/_pages//g;
+if(!$target_name){
+	print STDERR "target does not exist\n";
+	exit;
+}
+
 # file that contains the crawled pages
 my $list_file = "$target_name.list";
 # find all html files and write the result to $list_file
