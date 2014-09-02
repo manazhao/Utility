@@ -18,6 +18,6 @@ my $result_dir = "url-" . $host_name;
 chdir $result_dir;
 
 my $log_file = "wget.log";
-my $wget_cmd = "wget -i $url_file  -o $log_file -t 10 -w 3 -r -l 1 --user-agent=\"User-Agent: Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.2.12) Gecko/20101026 Firefox/3.6.12\"";
+my $wget_cmd = "wget -i $url_file  -o $log_file -t 2 -w 1 --user-agent=\"User-Agent: Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.2.12) Gecko/20101026 Firefox/3.6.12\"";
 print $wget_cmd . "\n";
 `$wget_cmd`;

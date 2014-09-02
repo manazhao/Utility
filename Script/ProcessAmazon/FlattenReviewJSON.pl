@@ -43,7 +43,14 @@ while(<$json_fh>){
 		if($date){
 			# convert to timestamp
 			try{
-				my $t = Time::Piece->strptime($date,"%B %d, %Y");
+				my @fields = split(/\s+/,$date);
+				my $format = "%B %d, %Y";
+				if(scalar @fields == 6){
+					my ($wd, $mon, $day, $time, $UTC, $year) = @fields;
+					$date = $mon . " " . $day . "," . $year . " " . $time;
+					$format = "%b %d, %Y %H:%M:%S";
+				}
+				my $t = Time::Piece->strptime($date,$format);
 				$date = $t->epoch;
 			}catch{
 				warn "illegal date format: $_ \n";
@@ -54,13 +61,13 @@ while(<$json_fh>){
 		my $key = join("_",($re_id,$pid,$date));
 		next if exists $review_map{$key};
 		$review_map{$key}=1;
-		print $rate_fh join(",",($re_id,$pid,$rate,$date,$vu,$vt)) . "\n";
+		print $rate_fh join("\t",($re_id,$pid,$rate,$date,$vu,$vt)) . "\n";
 		next if !$text;
 			# remove line change from the text
 		$text =~ s/\n//g;
 				# remove comma
 		$text =~ s/\,//g;
-			print $review_fh join(",",($re_id,$pid,$date,$text))  . "\n";
+			print $review_fh join("\t",($re_id,$pid,$date,$text))  . "\n";
 	}
 }
 
