@@ -7,7 +7,8 @@ use File::Basename;
 
 my $url_file_prefix;
 
-GetOptions("prefix=s" => \$url_file_prefix) or die $!;
+my $wait = 2;
+GetOptions("prefix=s" => \$url_file_prefix, "wait=s" => \$wait) or die $!;
 
 $url_file_prefix or usage();
 my %host_file_map = ("irkm-1"=>"aa","irkm-2"=>"ab","irkm-3"=>"ac","irkm-4"=>"ad","irkm-5"=>"ae","irkm-6"=>"af");
@@ -23,7 +24,7 @@ my $result_dir = $url_file . "_pages";
 chdir $result_dir;
 
 my $log_file = "./wget.log";
-my $wget_cmd = "wget -b -i $url_file  -o $log_file -t 10 -w 3  -nc -U 'Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.1.6) Gecko/20070802 SeaMonkey/1.1.4' ";
+my $wget_cmd = "wget  -i $url_file  -o $log_file -t 3 -w $wait -nc -U 'Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.1.6) Gecko/20070802 SeaMonkey/1.1.4' ";
 print $wget_cmd . "\n";
 `$wget_cmd`;
 
@@ -31,6 +32,7 @@ sub usage{
 	print <<END;
 Usage: $0 
 	--prefix	url file prefix
+	--wait		number of seconds to wait between two requests
 END
 die $!;
 }
