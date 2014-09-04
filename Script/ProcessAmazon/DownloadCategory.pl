@@ -19,8 +19,7 @@ use constant LEAF_CATEGORY_DIR => "LeafCategory";
 use constant LEAF_CATEGORY_FILE => LEAF_CATEGORY_DIR . "/leaf_category.csv";
 use constant CATEGORY_PRODUCT_URL_FILE => LEAF_CATEGORY_DIR . "/category_product_url.csv";
 use constant PRODUCT_DIR => "Product";
-use constant USER_DIR => "User";
-use constant REVIEW_DIR => "ProductReview";
+use constant USER_DIR => "User"; use constant REVIEW_DIR => "ProductReview";
 use constant LOG_FILE => "run.log";
 use constant FILE_SPLIT_PREFIX => "x";
 
@@ -41,11 +40,6 @@ my $main_node = $cluster_node_list[0];
 GetOptions("node-id=s" => \$node_id, "node-name=s" => \$node_name, "local-wd=s" => \$local_wd, "remote-wd=s" => \$remote_wd, "cluster-user=s" => \$cluster_user) or die $!;
 
 $node_id  and $node_name and $local_wd and $remote_wd and $cluster_user or usage();
-
-#my $pid = printAndExecute(remoteCommand("irkm-1.soe.ucsc.edu","ls / 1>/dev/null 2>&1 & echo \$!"));
-#my $pid = qx'ssh manazhao@irkm-1 "ls / 1>/dev/null 2>&1 & echo \$!"';
-#print $pid . "\n";
-#exit;
 
 # get category path
 $local_wd .= "/$node_name";
@@ -150,50 +144,52 @@ foreach my $node_idx (0 .. $#cluster_node_list){
     my $file_suffix = $node_file_suffix_map[$node_idx];
     my $node_file = getFullRemotePath(LEAF_CATEGORY_DIR) . "/" . FILE_SPLIT_PREFIX . $file_suffix;
     my $result_dir = $node_file . '_pages';
-
     if(not remoteFileExist($node,$result_dir,1)){
-        my $pid = remoteWget($node,$node_file,1);
+        my $pid = remoteWget($node,$node_file,3);
         if(!$pid){
             print ">> [err] $node: wget failed\n";
         }else{
             print ">>> wget on $node: $pid\n";
-        }
-        $node_pid_map{$node} = $pid;
+	    $node_pid_map{$node} = $pid;
+    }
     }else{
-        print ">>> warn: pages already downloaded\n";
+	    my $pid = checkRemoteProcess($node,"wget.pl");
+	    if($pid){
+		    print ">>> downloading is still running: $pid\n";
+		    $node_pid_map{$node} = $pid;
+	    }
     }
 }
 
 # wait for all category product page download to finish
 if(scalar keys %node_pid_map){
-   print ">>> wait for all category product page download to finish\n";
-   waitClusterFinish(\%node_pid_map);
+	print ">>> wait for all category product page download to finish\n";
+	waitClusterFinish(\%node_pid_map);
 }
 
 # process the downloaded category product pages
 %node_pid_map = ();
 foreach my $node_idx( 0 .. $#cluster_node_list){
-    my $node = $cluster_node_list[$node_idx];
-    my $node_wd = getFullRemotePath(LEAF_CATEGORY_DIR);
-    my $node_target = FILE_SPLIT_PREFIX . $node_file_suffix_map[$node_idx];
-    my $log = getFullRemotePath(LEAF_CATEGORY_DIR) . "/nohup_process_crawl.log";
-    my $remote_cmd = remoteCommand($node, "nohup ProcessCrawledPage.pl --wd=$node_wd --target=$node_target --parser=Amazon/CategoryPageParser 1>$log 2>&1 & echo \$!" );
-    my $pid = printAndExecute($remote_cmd);
-    if($pid){
-        print ">>> ProcessCrawledPage.pl on $node: $pid\n";
-        $node_pid_map{$node} = $pid;
-    }else{
-        print ">>> [err] failed to process the crawled pages on $node\n";
-    }
+	my $node = $cluster_node_list[$node_idx];
+	my $node_wd = getFullRemotePath(LEAF_CATEGORY_DIR);
+	my $node_target = FILE_SPLIT_PREFIX . $node_file_suffix_map[$node_idx];
+	my $log = getFullRemotePath(LEAF_CATEGORY_DIR) . "/nohup_process_crawl.log";
+	my $remote_cmd = remoteCommand($node, "nohup ProcessCrawledPage.pl --wd=$node_wd --target=$node_target --parser=Amazon/CategoryPageParser 1>$log 2>&1 & echo \$!" );
+	my $pid = printAndExecute($remote_cmd);
+	if($pid){
+		print ">>> ProcessCrawledPage.pl on $node: $pid\n";
+		$node_pid_map{$node} = $pid;
+	}else{
+		print ">>> [err] failed to process the crawled pages on $node\n";
+	}
 }
 
 if(scalar keys %node_pid_map){
-    print ">>> wait for all processes to finish\n";
-    waitClusterFinish(\%node_pid_map);
+	print ">>> wait for all processes to finish\n";
+	waitClusterFinish(\%node_pid_map);
 }
 
 # extract asins
-		
 my $local_asin_file = getFullLocalPath(PRODUCT_DIR) . "/asin.csv";
 %node_pid_map = ();
 if(not -f $local_asin_file){
@@ -216,8 +212,8 @@ if(not -f $local_asin_file){
 	}
 	print ">>> wait for all extraction job done\n";
 	waitClusterFinish(\%node_pid_map);
-	print ">>> concatenate asins of each node to a single file\n";
 
+	print ">>> concatenate asins of each node to a single file\n";
 	# concatenate all asins 
 	my $local_asin_tmp_file = getFullLocalPath(PRODUCT_DIR) . "/asin.tmp.csv";
 	foreach my $node_idx(0 .. $#cluster_node_list){
@@ -231,29 +227,65 @@ if(not -f $local_asin_file){
 	}	
 	`sort $local_asin_tmp_file |uniq > $local_asin_file`;
 	`rm $local_asin_tmp_file`;
-	# now copy to the $main_node
+# now copy to the $main_node
 	$cmd = "scp $local_asin_file $cluster_user\@$main_node:" . getFullRemotePath(PRODUCT_DIR) . "/";
 	print ">>> $cmd\n";
 	`$cmd`;
 }
 
-# extract product information
+# download product profile by running amazon product api
+my $remote_asin_file = getFullRemotePath(PRODUCT_DIR) . "/asin.csv";
 
+if(not remoteFileExist($main_node,$remote_asin_file)){
+	print ">>> [err] asin file does not exist: $remote_asin_file\n";
+	exit 1;
+}
+
+my $response_offset_file = getFullRemotePath($main_node,PRODUCT_DIR) . "/response_pos.csv";
+my $response_linked_file = getFullRemotePath($main_node,PRODUCT_DIR) . "/response_linked.csv";
+my $item_file = getFullRemotePath(PRODUCT_DIR) . "/profile.json";
+my $log_file = getFullRemotePath(PRODUCT_DIR) . "/nohup_api.log";
+
+
+$pid = checkRemoteProcess($main_node, "crawler_console queryItem");
+if(!$pid){
+	$cmd = remoteCommand($main_node,"nohup crawler_console queryItem --asin-file=$remote_asin_file --offset-file=$response_linked_file --item-file=$item_file 1>$log_file 2>&1 & echo \$!");
+	if(printAndExecute($cmd)){
+		print ">>> failed to run amazon item profile query on $main_node\n";
+		exit 1;
+	}
+}else{
+	print ">>> [warn] amazon item query is running on $node: $pid";
+
+}
+
+
+# now generate the review page urls and distribute to cluster nodes
+%node_pid_map = ();
+
+for my $i (0 .. $#cluster_node_list){
+	my $node = $cluster_node_list[$i];
+	my $input_file = getFullRemotePath(LEAF_CATEGORY_DIR) . "/" .  FILE_SPLIT_PREFIX . $node_file_suffix_map[$i] . "_parsed.json";
+}
+
+
+# now generate review pages and crawl the query pages
 sub waitClusterFinish{
 	my($node_pid_map) = @_;
-	my $num_processes = keys %$node_pid_map;
-	while($num_processes){
+	my $num_processes = scalar keys %$node_pid_map;
+	while($num_processes > 0){
 		while(my($node,$pid) = each %$node_pid_map){
-			if(checkRemotePid($node,$pid)){
+			if(exists $node_pid_map->{$node} and !checkRemotePid($node,$pid)){
 				delete $node_pid_map->{$node};
 				$num_processes--;
 			}
 		}
 		# sleep 5 seconds between checks
 		sleep(5);
+		print ".";
 	}
+	print "\n>>> all nodes return\n";
 }
-
 
 sub remoteWget{
 	my ($host, $input_url_file, $wait) = @_;
@@ -266,19 +298,36 @@ sub remoteWget{
 		my $cmd = remoteCommand($host, "mkdir $page_dir");
 		printAndExecute($cmd);
 	}
-	my $log_file = "nohup_wget.log";
-	my $wget_cmd = "wget  -i ../$file_name  -o $log_file -t 3 -w $wait -nc -U 'Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.1.6) Gecko/20070802 SeaMonkey/1.1.4' ";
-	my $full_cmd = "cd $page_dir; nohup $wget_cmd >$log_file 2>&1 & echo \$! " ;
+	my $log_file = "$dir/nohup_wget.log";
+	my $wget_cmd = "wget.pl --url-file=$input_url_file --wait=$wait";
+	my $full_cmd = "nohup $wget_cmd >$log_file 2>&1 & echo \$! " ;
 	my $remote_cmd = remoteCommand($host, $full_cmd);
 	return printAndExecute($remote_cmd);
 }
 
-sub checkRemotePid{
-	my($host,$pid) = @_;
-	my $cmd = remoteCommand($host,'ps cax|grep \s*' . $pid . '2>&1 ');
+sub checkRemoteProcess{
+	my($host,$pname) = @_;
+	my $cmd = remoteCommand($host,"ps ax|grep $pname");
 	my $output = printAndExecute($cmd);
 	chomp $output;
-	return $cmd =~ m/$pid/;
+	my $pid;
+	if($output){
+		if($output =~ /^\s*(\d+)/){
+			$pid = $1;
+		}
+	}
+	return $pid;
+}
+
+sub checkRemotePid{
+	my($host,$pid) = @_;
+	my $cmd = remoteCommand($host,'ps cax|grep \s*' . $pid . ' 2>&1 ');
+	my $output = `$cmd`;
+	chomp $output;
+	if($output =~ m/$pid/){
+		return 1;
+	}
+	return 0;
 }
 
 sub remoteFileExist{
@@ -346,7 +395,7 @@ sub executeCluster{
 
 sub usage{
 	print <<END;
-	$0:
+$0:
    --node-id		category Id
    --node-name		category name
    --local-wd		local working directory
