@@ -150,33 +150,56 @@ sub rsync_to_cluster{
     }
 }
 
+
+my @LETTER_SEQ = qw(aa ab ac ad ae af ag ah ai aj ak al);
+
 sub split_and_distribute{
     my($self, $local_file,$cluster_path,%rest_args) = @_;
+    my %default_args = (
+        split_prefix => undef,
+        use_number => 0,
+    );
+    move_hash_values(\%rest_args,\%default_args,[keys %default_args]);
+
     my $local_dir = dirname($local_file);
     my $local_file_name = basename($local_file);
     my $old_local_wd = $self->{local_wd};
     $self->{local_wd} = $local_dir;
-    my $split_prefix = "$local_file_name" . "_";
     my $num_of_nodes = @{$self->{node_list}};
     my $num_of_lines = $self->execute_on_local("wc -l $local_file|grep -o -P \"^\\d+\"");
     my $num_per_node = int($num_of_lines / $num_of_nodes) + 1;
-    my $cmd = "split -d -l $num_per_node $local_file $split_prefix";
+    my $use_num_opt = $default_args{use_number} ? "-d" : "";
+    my $split_prefix = $default_args{split_prefix} ? $default_args{split_prefix} : $local_file_name . "_";
+    my $cmd = "split $use_num_opt -l $num_per_node $local_file $split_prefix";
     $self->execute_on_local($cmd);
     # now distribute to cluster node
-    my $local_split_pat = $split_prefix . "%02d";
-    my $local_split_arg = [0 .. $num_of_nodes -1];
+    my $local_split_pat;
+    my $local_split_arg;
+    if($default_args{use_number}){
+        $local_split_pat = $split_prefix . "%02d";
+        $local_split_arg = [0 .. $num_of_nodes -1];
+    }else{
+        $local_split_pat = $split_prefix . "%s";
+        $local_split_arg = [@LETTER_SEQ[0 .. $num_of_nodes - 1]];
+    }
     $self->rsync_to_cluster(local_path_pattern => $local_split_pat, local_path_args => $local_split_arg, 
-	    remote_path => $cluster_path, %rest_args);
+        remote_path => $cluster_path, %rest_args);
     $self->{local_wd} = $old_local_wd;
 }
 
 
+
 # add a cluster node
 sub add_node{
-	my $self = shift;
-	my ($addr) = @_;
-	push @{$self->{node_list}}, $addr;
-	return $self;
+    my $self = shift;
+    my ($addr) = @_;
+    push @{$self->{node_list}}, $addr;
+    return $self;
+}
+
+
+sub combine_multiple_command{
+    return join(";", @_);
 }
 
 sub execute_on_local{
@@ -190,7 +213,7 @@ sub execute_on_local{
 sub execute_on_node{
     my($self,$node_idx,$cmd,%rest_args) = @_;
     my %default_args = (
-	    redir_option => ""
+        redir_option => ""
     );
     move_hash_values(\%rest_args,\%default_args,[qw(redir_option)]);
     my $redir_option = "";
@@ -211,7 +234,7 @@ sub execute_on_node_bg{
     my $cmd = shift;
     my %rest_args = @_;
     my %default_args = (
-	    log_file => "/dev/null"
+        log_file => "/dev/null"
     );
     move_hash_values(\%rest_args,\%default_args,[qw(log_file)]);
     my $log_file = $default_args{log_file};
@@ -225,118 +248,118 @@ sub execute_on_node_bg{
 }
 
 sub execute_on_cluster{
-	my $self = shift;
-	my %default_args = (
-		cmd_pattern => undef,
-		cmd_args => undef
-	);
-	my %rest_args = (@_);
-	move_hash_values(\%rest_args,\%default_args,[qw(cmd_pattern cmd_args])]);
-	my $cmd_pattern = $default_args{cmd_pattern};
-	my $cmd_args = $default_args{cmd_args};
-	my $execute_result_map = {};
+    my $self = shift;
+    my %default_args = (
+        cmd_pattern => undef,
+        cmd_args => undef
+    );
+    my %rest_args = (@_);
+    move_hash_values(\%rest_args,\%default_args,[qw(cmd_pattern cmd_args])]);
+        my $cmd_pattern = $default_args{cmd_pattern};
+        my $cmd_args = $default_args{cmd_args};
+        my $execute_result_map = {};
 
-	foreach my $i( 0 .. @{$self->{node_list}} - 1){
-		my $cmd = $cmd_args? sprintf($cmd_pattern, $cmd_args->[$i]) : $cmd_pattern;
-		$execute_result_map->{$i} = $self->execute_on_node($i,$cmd,%rest_args);
-	}
-	return $execute_result_map;
+        foreach my $i( 0 .. @{$self->{node_list}} - 1){
+            my $cmd = $cmd_args? sprintf($cmd_pattern, $cmd_args->[$i]) : $cmd_pattern;
+            $execute_result_map->{$i} = $self->execute_on_node($i,$cmd,%rest_args);
+        }
+        return $execute_result_map;
 }
 
 sub move_hash_values{
-	my ($from_hash,$to_hash,$keys) = @_;
-	foreach my $key(@$keys){
-		if(exists $from_hash->{$key}){
-			$to_hash->{$key} = $from_hash->{$key};
-			delete $from_hash->{$key};
-		}
-	}
+    my ($from_hash,$to_hash,$keys) = @_;
+    foreach my $key(@$keys){
+        if(exists $from_hash->{$key}){
+            $to_hash->{$key} = $from_hash->{$key};
+            delete $from_hash->{$key};
+        }
+    }
 }
 
 sub execute_on_cluster_bg{
-	my $self = shift;
-	my %default_args = (
-		cmd_pattern => undef,
-		cmd_args => undef,
-		log_file => undef,
-	);
-	my %rest_args = @_;
-	move_hash_values(\%rest_args,\%default_args,[qw(cmd_pattern cmd_args log_file)]);
-	$default_args{cmd_pattern} or die "command pattern must exist";
-	# modify the command line by setting it to background and return the pid
-	my $host_pid_map = {};
-	my $cmd_pattern = $default_args{cmd_pattern};
-	my $cmd_args = $default_args{cmd_args};
-	my $log_file = $default_args{log_file};
-	foreach my $i( 0 .. @{$self->{node_list}} - 1){
-		my $cmd = $cmd_args ? sprintf($cmd_pattern, $cmd_args->[$i]) : $cmd_pattern;
-		my $pid = $self->execute_on_node_bg(($i,$cmd,%rest_args));
-		$host_pid_map->{$i}->{$pid} = 1;
-	}
-	return $host_pid_map;
+    my $self = shift;
+    my %default_args = (
+        cmd_pattern => undef,
+        cmd_args => undef,
+        log_file => undef,
+    );
+    my %rest_args = @_;
+    move_hash_values(\%rest_args,\%default_args,[qw(cmd_pattern cmd_args log_file)]);
+    $default_args{cmd_pattern} or die "command pattern must exist";
+# modify the command line by setting it to background and return the pid
+    my $host_pid_map = {};
+    my $cmd_pattern = $default_args{cmd_pattern};
+    my $cmd_args = $default_args{cmd_args};
+    my $log_file = $default_args{log_file};
+    foreach my $i( 0 .. @{$self->{node_list}} - 1){
+        my $cmd = $cmd_args ? sprintf($cmd_pattern, $cmd_args->[$i]) : $cmd_pattern;
+        my $pid = $self->execute_on_node_bg(($i,$cmd,%rest_args));
+        $host_pid_map->{$i}->{$pid} = 1;
+    }
+    return $host_pid_map;
 }
 
 sub sync_cluster_execute{
-	my ($self, @args) = @_;
-	my $cluster_pid_map = $self->execute_on_cluster_bg(@args);
-	$self->wait_cluster_execute($cluster_pid_map);
+    my ($self, @args) = @_;
+    my $cluster_pid_map = $self->execute_on_cluster_bg(@args);
+    $self->wait_cluster_execute($cluster_pid_map);
 }
 
 sub wait_cluster_execute{
-	my($self,$execute_pid_map) = @_;
-	my $num_nodes_alive = keys %$execute_pid_map;
-	print "[info] wait cluster processes to finish, could take long time\n";
-	while($num_nodes_alive > 0){
-		while(my($node_idx,$pid_map) = each %$execute_pid_map){
-			if($self->wait_node_execute($node_idx,$pid_map)){
-				$num_nodes_alive--;
-				print "\n[info] processes on node-$node_idx are done, $num_nodes_alive more nodes active\n";
-			}
-		}
-		print ".";
-		$num_nodes_alive and sleep(5);
-	}
-	print "\n[info] all nodes done\n";
+    my($self,$execute_pid_map) = @_;
+    my $num_nodes_alive = keys %$execute_pid_map;
+    print "[info] wait cluster processes to finish, could take long time\n";
+    while($num_nodes_alive > 0){
+        while(my($node_idx,$pid_map) = each %$execute_pid_map){
+            if($self->wait_node_execute($node_idx,$pid_map)){
+                $num_nodes_alive--;
+                print "\n[info] processes on node-$node_idx are done, $num_nodes_alive more nodes active\n";
+            }
+        }
+        print ".";
+        $num_nodes_alive and sleep(5);
+    }
+    print "\n[info] all nodes done\n";
 }
 
 sub wait_node_execute{
-	my($self, $node_idx, $node_pid_map) = @_;
-	my $more_alive = 0;
-	foreach my $pid(keys %$node_pid_map){
-		$more_alive = $more_alive || $self->check_node_pid($node_idx,$pid, echo => 0);
-	}
-	return !$more_alive;
+    my($self, $node_idx, $node_pid_map) = @_;
+    my $more_alive = 0;
+    foreach my $pid(keys %$node_pid_map){
+        $more_alive = $more_alive || $self->check_node_pid($node_idx,$pid, echo => 0);
+    }
+    return !$more_alive;
 }
 
 sub check_node_process{
-	my($self,$node_idx, $pname, @rest_args) = @_;
-	my $cmd = "ps ax|grep -o -P '$pname'";
-	return $self->execute_on_node($node_idx,$cmd,@rest_args);
+    my($self,$node_idx, $pname, @rest_args) = @_;
+    my $cmd = "ps ax|grep -o -P '$pname'";
+    return $self->execute_on_node($node_idx,$cmd,@rest_args);
 }
 
 sub check_node_pid{
-	my($self,$node_idx, $pid,@rest_args) = @_;
-	my $cmd = "ps cax|grep -o -P '^\\s*$pid'";
-	return $self->execute_on_node($node_idx,$cmd,@rest_args);
+    my($self,$node_idx, $pid,@rest_args) = @_;
+    my $cmd = "ps cax|grep -o -P '^\\s*$pid'";
+    return $self->execute_on_node($node_idx,$cmd,@rest_args);
 }
 
 
 sub dump{
-	my $self = shift;
-	print Dumper($self);
+    my $self = shift;
+    print Dumper($self);
 }
 
 sub _execute_cmd{
-	my $cmd = shift;
-	my %default_args = (
-		echo => 1,
-		message => undef
-	);
-	my %rest_args = (@_);
-	move_hash_values(\%rest_args,\%default_args,[qw(echo message)]);
-	$default_args{echo} and print "[info] $cmd\n";
-	$default_args{message} and print "[info] $default_args{message}\n";
-	my $output = `$cmd`;
-	chomp $output;
-	return $output;
-}
+    my $cmd = shift;
+    my %default_args = (
+        echo => 1,
+        message => undef
+    );
+    my %rest_args = (@_);
+    move_hash_values(\%rest_args,\%default_args,[qw(echo message)]);
+        $default_args{echo} and print "[info] $cmd\n";
+        $default_args{message} and print "[info] $default_args{message}\n";
+        my $output = `$cmd`;
+        chomp $output;
+        return $output;
+    }

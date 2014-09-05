@@ -15,7 +15,10 @@ $mngr->init_local_wd("/tmp/test_cluster");
 =cut
 # now test split and distribute
 my $local_file = "/tmp/test_cluster/Test.pl";
-$mngr->split_and_distribute($local_file, "/tmp/test_cluster/");
+$mngr->split_and_distribute($local_file, "/tmp/test_cluster/", split_prefix => 'x');
+
+# rsync local files to remote 
+
 
 # cat all splits on node to local
 $mngr->cluster_cat(
