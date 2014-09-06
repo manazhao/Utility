@@ -4,6 +4,7 @@ use strict;
 use warnings;
 use FindBin;
 use lib "$FindBin::Bin";
+use Data::Dumper;
 
 use Cluster::Manager;
 
@@ -25,7 +26,11 @@ $mngr->cluster_cat(
 	remote_path_pattern => "/tmp/test_cluster/Test.pl_%02d",
 	remote_path_args => [0 .. 1], 
 	local_path => "/tmp/test_cluster/cat_from_node");
-# test sync mult-process over cluster
-$mngr->sync_cluster_execute(cmd_pattern => "sleep 20");
 
-#$mngr->dump();
+# test sync mult-process over cluster
+#$mngr->sync_cluster_execute(cmd_pattern => "sleep 1");
+
+my $pid = $mngr->check_cluster_process("crawler_console\\s+downloadReview");
+print Dumper($pid);
+
+

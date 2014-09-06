@@ -3,6 +3,7 @@ use strict;
 use warnings;
 use Getopt::Long;
 use File::Basename;
+use Data::Dumper;
 use FindBin;
 use lib "$FindBin::Bin/../Lib";
 use Cluster::Manager;
@@ -44,17 +45,22 @@ GetOptions("node-id=s" => \$node_id, "node-name=s" => \$node_name, "local-wd=s" 
 
 $node_id  and $node_name and $local_wd and $remote_wd and $cluster_user or usage();
 
+
 # get category path
 $local_wd .= "/$node_name";
-
 # update remote wd to specific product category
 $remote_wd .="/$node_name";
 
--f $local_wd or `mkdir -p $local_wd`;
+# use Cluster::Manager for all the following tasks
+my $cluster_manager = new Cluster::Manager(
+    node_list => \@cluster_node_list,
+    cluster_user => $cluster_user,
+    local_wd => $local_wd,
+    cluster_wd => $remote_wd
+);
 
 # create directory on irkm servers
 my $cmd;
-
 # create subdirectories
 my @sub_dirs = (
 	CATEGORY_DIR,
@@ -66,143 +72,133 @@ my @sub_dirs = (
 
 # create on local machine and cluster nodes
 foreach my $sub(@sub_dirs){
-    if(not -d getFullLocalPath($sub)){
-        mkdir getFullLocalPath($sub);
-        foreach my $node(@cluster_node_list){
-            if(not remoteFileExist($node,getFullRemotePath($sub)),1){
-                my $tmpCmd = remoteCommand($node,"mkdir -p " . getFullRemotePath($sub));
-                printAndExecute($tmpCmd);
-            }
-        }
-    }
+	if(not -d $cluster_manager->local_file_exist($sub)){
+		$cluster_manager->execute_on_local("mkdir -p $sub");
+		$cluster_manager->execute_on_cluster(
+			cmd_pattern => "[ ! -d $sub ] && mkdir -p $sub"
+		);
+	}
 }
 
+my $main_node = 0;
+# retrieve category tree
+my $query_category_tree_pid;
+if(not $cluster_manager->node_file_exist($main_node, CATEGORY_TREE_FILE)){
+	$cmd =  "crawler_console retrieveAmazonCategory --start-node=$node_id --result-file=" . CATEGORY_TREE_FILE;
+	$query_category_tree_pid = $cluster_manager->execute_on_node_bg(
+		cmd_pattern => $cmd
+	);
+	if($query_category_tree_pid){
+		print "[info] start to query amazon product categry  on node-$main_node: $query_category_tree_pid\n";
+	}else{
+		print "[err] error in query amazon product category\n";
+	}
+}
 
-# use Cluster::Manager for all the following tasks
-# create cluster manager object
-my $cluster_manager = new Cluster::Manager(
-    node_list => \@cluster_node_list,
-    cluster_user => $cluster_user,
-    local_wd => $local_wd,
-    cluster_wd => $cluster_wd
+# now wait until finish
+my $cluster_pid_map = $cluster_manager->check_cluster_process($main_node, "crawler_console\\s+retrieveAmazonCategory");
+$cluster_manager->wait_cluster_execute($cluster_pid_map);
+
+# generate leaf category file
+$cluster_manager->execute_on_node($main_node,
+	cmd_pattern => "[ ! -f " . LEAF_CATEGORY_FILE . " ] && " . 'perl -lne "chomp;  if(/(^[^\t]+)\t$/){print \$1}"  ' . CATEGORY_TREE_FILE . " > " . LEAF_CATEGORY_FILE,
 );
+
+# now  generate category product url
+
 
 # generate the item -> number of reviews file and concatenate to a single file
 my $LETTER_SEQ = [qw(aa ab ac ad ae af ag ah ai aj ak al am an)];
 
-# check the existence of item -> page_number file
-my $result_map = $cluster_manager->execute_on_cluster(
-    cmd_pattern => "[ -f " . LEAF_CATEGORY_DIR . "/x%s_asin_rp.csv ] && echo 1", 
-    cmd_args => $LETTER_SEQ
+if(not $cluster_manager->all_nodes_true($cluster_manager->execute_on_cluster( cmd_pattern => "[ -f " . LEAF_CATEGORY_DIR . "/x%s_asin_rp.csv ] && echo 1", cmd_args => $LETTER_SEQ))){
+#if(1){
+	print ">>> generate asin review number file\n";
+	$cluster_manager->sync_cluster_execute(
+		cmd_pattern => "GenerateProductReviewURL.pl < " . LEAF_CATEGORY_DIR . "/x%s_parsed.json > " . LEAF_CATEGORY_DIR . "/x%s_asin_rp.csv",
+		cmd_args => [$LETTER_SEQ,$LETTER_SEQ],
+		log_file => "" # avoid redirection
+	);
+
+	# now concatenate all the result
+	my $remote_path_pattern = LEAF_CATEGORY_DIR . "/x%s_asin_rp.csv";
+	my $local_tmp_path = REVIEW_DIR . "/asin_rp.tmp.csv";
+	my $local_path = REVIEW_DIR . "/asin_rp.csv";
+
+	$cluster_manager->cluster_cat(
+		remote_path_pattern => $remote_path_pattern,
+		remote_path_args => $LETTER_SEQ,
+		local_path => $local_tmp_path
+	);
+
+	# sort and uniq
+	$cluster_manager->execute_on_local("sort $local_tmp_path|uniq > $local_path");
+	# remove the tmp file
+	$cluster_manager->execute_on_local("rm $local_tmp_path");
+	# now split and distribute to cluster
+	$cluster_manager->split_and_distribute($local_path, REVIEW_DIR, split_prefix => 'x');
+	# generate the asin file
+	my $asin_file = PRODUCT_DIR . "/asin.csv";
+	$cluster_manager->execute_on_local("cut -f1 -d, $local_path > $asin_file");
+	# upload to the first node
+	$cluster_manager->rsync_to_node(0, $asin_file, PRODUCT_DIR);
+}
+
+my $asin_file = PRODUCT_DIR . "/asin.csv";
+
+if(not $cluster_manager->node_file_exist(0, PRODUCT_DIR . "/response_linked.csv") ){
+	my $query_item_pid = $cluster_manager->check_node_process(0,"crawler_console\\s+queryItem");
+	if(!$query_item_pid){
+		print "[info] start to query amazon item profile on node-0\n";
+		my $response_offset_file = PRODUCT_DIR . "/response_pos.csv";
+		my $response_linked_file = PRODUCT_DIR . "/response_linked.csv";
+		my $item_file = PRODUCT_DIR . "/profile.json";
+		my $log_file = PRODUCT_DIR . "/nohup_api.log";
+		my $cmd = "nohup crawler_console queryItem --asin-file=$asin_file --offset-file=$response_offset_file --response-file=$response_linked_file --item-file=$item_file";
+		$query_item_pid = $cluster_manager->execute_on_node_bg(0, $cmd, log_file => $log_file);
+		if($query_item_pid){
+			print "[info] query item is running on node-0: $query_item_pid\n";
+		}
+	}else {
+		print "[info] amazon item profile is running on node-0: $query_item_pid\n";
+	}
+}
+
+# start to download the review pages
+my $review_pid_map = {};
+if(not $cluster_manager->all_nodes_true($cluster_manager->execute_on_cluster( cmd_pattern => "[ -d " . REVIEW_DIR . "/x%s_pages ] && echo 1", cmd_args => $LETTER_SEQ))){
+	print "[info] start to download review pages\n";
+	$review_pid_map = $cluster_manager->execute_on_cluster_bg(
+		cmd_pattern => "crawler_console downloadReview --input=" . REVIEW_DIR . "/x%s --wait=2",
+		cmd_args => $LETTER_SEQ
+	);
+}
+
+
+# start to parse review pages after all pages are downloaded
+$review_pid_map = $cluster_manager->check_cluster_process("crawler_console\\s+downloadReview");
+print "[info]: wait for review downloading finish\n";
+$cluster_manager->wait_cluster_execute($review_pid_map);
+
+# parse the review pages
+$cluster_manager->sync_cluster_execute(
+	cmd_patetrn => "[  -f " . REVIEW_DIR . "/x%s_linked ] && ProcessCrawledPage.pl --wd=ProductReview --target=x%s --parser=Amazon/ProductReviewXMLParser",
+	cmd_args => [$LETTER_SEQ,$LETTER_SEQ]
 );
 
-my $true_cnt = 0;
-map {$true_cnt += $result_map->{$_}} keys %$result_map;
-
-
-if($true_cnt != scalar keys %result_map){
-    print ">>> generate asin review number file\n";
-    $cluster_manager->sync_cluster_execute(
-        cmd_pattern => "GenerateProductReviewURL.pl < " . LEAF_CATEGORY_DIR . "%s_parsed.json > " . LEAF_CATEGORY_DIR . "/%s_asin_rp.csv",
-        cmd_args => $LETTER_SEQ
-    );
-
-    # now concatenate all the result
-    my $remote_path_pattern = getFullRemotePath(LEAF_CATEGORY_DIR) . "/%s_asin_rp.csv";
-    my $local_tmp_path = getFullLocalPath(LEAF_CATEGORY_DIR) . "/asin_rp.tmp.csv";
-    my $local_path = getFullLocalPath(LEAF_CATEGORY_DIR) . "/asin_rp.csv";
-    $cluster_manager->cluster_cat(
-        remote_path_pattern => $remote_path_pattern,
-        remote_path_args => $LETTER_SEQ,
-        local_path => $local_path
-    );
-
-    # sort and uniq
-    $cluster_manager->execute_on_local("sort $local_tmp_path|uniq > $local_path");
-    # now split and distribute to cluster
-
-
-}
-
-
-
-
-my $local_asin_file = getFullLocalPath(PRODUCT_DIR) . "/asin.csv";
-%node_pid_map = ();
-if(not -f $local_asin_file){
-	print ">>> extract asin from category product pages\n";
-	# extract on each node
-	foreach my $node_idx(0 .. $#cluster_node_list){
-		my $node = $cluster_node_list[$node_idx];
-		my $node_file = FILE_SPLIT_PREFIX . $node_file_suffix_map[$node_idx];
-		my $input_file = getFullRemotePath(LEAF_CATEGORY_DIR) . "/$node_file" . "_parsed.json";
-		my $output_file = getFullRemotePath(LEAF_CATEGORY_DIR) . "/$node_file" . "_asin.csv";
-		my $perl_cmd = 'perl -lne "while(/\"asin\":\"([\d\w]+)\"/g){ print \$1}" ' . $input_file . " > $output_file 2>/dev/null & echo \$!";
-		my $remote_cmd = remoteCommand($node, $perl_cmd);
-		my $pid = printAndExecute($remote_cmd);
-		if($pid){
-			$node_pid_map{$node} = $pid;
-			print ">>> extract asin on $node : $pid\n";
-		}else{
-			print ">>> [err] failed to extract asin on $node\n";
-		}
-	}
-	print ">>> wait for all extraction job done\n";
-	waitClusterFinish(\%node_pid_map);
-
-	print ">>> concatenate asins of each node to a single file\n";
-	# concatenate all asins 
-	my $local_asin_tmp_file = getFullLocalPath(PRODUCT_DIR) . "/asin.tmp.csv";
-	foreach my $node_idx(0 .. $#cluster_node_list){
-		my $node = $cluster_node_list[$node_idx];
-		my $node_file = FILE_SPLIT_PREFIX . $node_file_suffix_map[$node_idx];
-		my $node_asin_file = getFullRemotePath(LEAF_CATEGORY_DIR) . "/$node_file" . "_asin.csv";
-		# do the dump
-		$cmd = "ssh $cluster_user\@$node 'cat $node_asin_file' >> $local_asin_tmp_file";
-		print ">>> $cmd\n";
-		`$cmd`;
-	}	
-	`sort $local_asin_tmp_file |uniq > $local_asin_file`;
-	`rm $local_asin_tmp_file`;
-# now copy to the $main_node
-	$cmd = "scp $local_asin_file $cluster_user\@$main_node:" . getFullRemotePath(PRODUCT_DIR) . "/";
-	print ">>> $cmd\n";
-	`$cmd`;
-}
-
-# download product profile by running amazon product api
-my $remote_asin_file = getFullRemotePath(PRODUCT_DIR) . "/asin.csv";
-
-if(not remoteFileExist($main_node,$remote_asin_file)){
-	print ">>> [err] asin file does not exist: $remote_asin_file\n";
-	exit 1;
-}
-
-my $response_offset_file = getFullRemotePath($main_node,PRODUCT_DIR) . "/response_pos.csv";
-my $response_linked_file = getFullRemotePath($main_node,PRODUCT_DIR) . "/response_linked.csv";
-my $item_file = getFullRemotePath(PRODUCT_DIR) . "/profile.json";
-my $log_file = getFullRemotePath(PRODUCT_DIR) . "/nohup_api.log";
-
-
-my $query_item_pid = checkRemoteProcess($main_node, "crawler_console queryItem");
-if(!$query_item_pid){
-	$cmd = remoteCommand($main_node,"nohup crawler_console queryItem --asin-file=$remote_asin_file --offset-file=$response_linked_file --item-file=$item_file 1>$log_file 2>&1 & echo \$!");
-        $query_item_pid = printAndExecute($cmd);
-	if(!$query_item_pid){
-		print ">>> failed to run amazon item profile query on $main_node\n";
-		exit 1;
-	}
+# now concatenate all parsed review files and put to irkm-1
+print "[info] concatenate all review files and upload to irkm-1\n";
+if($cluster_manager->all_nodes_true($cluster_manager->execute_on_cluster( cmd_pattern => "[ -f " . REVIEW_DIR . "/x%s_parsed.json ] && echo 1", cmd_args => $LETTER_SEQ))){
+	my $merged_file = REVIEW_DIR . "/review.json";
+	$cluster_manager->cluster_cat(
+		remote_path_pattern => REVIEW_DIR . "/x%s_parsed.json",
+		remote_path_args => $LETTER_SEQ,
+		local_path => $merged_file
+	);
+	print "[info] upload review file to node-0\n";
+	$cluster_manager->rsync_to_node(0,$merged_file, REVIEW_DIR . "/");
 }else{
-	print ">>> [warn] amazon item query is running on $node: $query_item_pid";
+	print "[warn] parsed reviewed data is not ready\n";
 }
-
-
-
-
-
-
-
-
 
 # now generate review pages and crawl the query pages
 sub waitClusterFinish{
@@ -330,7 +326,7 @@ sub executeCluster{
 
 sub usage{
 	print <<END;
-$0:
+	$0:
    --node-id		category Id
    --node-name		category name
    --local-wd		local working directory
