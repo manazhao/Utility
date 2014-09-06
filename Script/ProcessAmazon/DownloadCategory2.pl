@@ -105,7 +105,7 @@ $cluster_manager->execute_on_node($main_node,
 );
 
 # now  generate category product url
-
+$cluster_manager->execute_on_node
 
 # generate the item -> number of reviews file and concatenate to a single file
 my $LETTER_SEQ = [qw(aa ab ac ad ae af ag ah ai aj ak al am an)];
