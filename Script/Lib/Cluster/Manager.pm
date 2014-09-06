@@ -162,16 +162,20 @@ sub rsync_to_cluster{
     }
 }
 
-sub check_cluster_process{
+
+
+sub check_cluster_pname{
 	my ($self,$pname) = @_;
-	my $node_pid_map = ();
+	my $cluster_pid_map = ();
 	foreach my $node_idx ( 0 .. @{$self->{node_list}} - 1){
-		my $node_pid = $self->check_node_process($node_idx,$pname);
-		if($node_pid){
-			$node_pid_map->{$node_idx}->{$node_pid} = 1;
+		my $node_pid_map = $self->check_node_pname($node_idx,$pname);
+		if($node_pid_map){
+			foreach my $pid(keys %$node_pid_map){
+				$cluster_pid_map->{$node_idx}->{$pid} = 1;
+			}
 		}
 	}
-	return $node_pid_map;
+	return $cluster_pid_map;
 }
 
 sub all_nodes_true {
@@ -359,16 +363,16 @@ sub execute_on_cluster_bg{
 sub sync_cluster_execute{
     my ($self, @args) = @_;
     my $cluster_pid_map = $self->execute_on_cluster_bg(@args);
-    $self->wait_cluster_execute($cluster_pid_map);
+    $self->wait_cluster_pid($cluster_pid_map);
 }
 
-sub wait_cluster_execute{
+sub wait_cluster_pid{
     my($self,$execute_pid_map) = @_;
     my $num_nodes_alive = keys %$execute_pid_map;
     print "[info] wait cluster processes to finish, could take long time\n";
     while($num_nodes_alive > 0){
         while(my($node_idx,$pid_map) = each %$execute_pid_map){
-            if($self->wait_node_execute($node_idx,$pid_map)){
+            if($self->node_pid_finish($node_idx,$pid_map)){
                 $num_nodes_alive--;
 		delete $execute_pid_map->{$node_idx};
                 print "[info] processes on node-$node_idx are done, $num_nodes_alive more nodes active\n";
@@ -380,8 +384,31 @@ sub wait_cluster_execute{
     print "\n[info] all nodes done\n";
 }
 
-sub wait_node_execute{
+sub wait_node_pid{
+	my($self,$node_idx,$node_pid_map,%rest_args) = @_;
+	my %default_args = (
+		sleep => 5
+	);
+	move_hash_values(\%rest_args,\%default_args,[keys %default_args]);
+	while(!$self->node_pid_finish($node_idx,$node_pid_map)){
+		print ".";
+		sleep $default_args{sleep};
+	}
+	print "node $node_idx return\n";
+}
+
+# check whether the node is still running the given pids
+sub node_pid_finish{
     my($self, $node_idx, $node_pid_map) = @_;
+    my $ref = ref($node_pid_map);
+    my @pids = ();
+    if(!$ref){
+	    push @pids, $node_pid_map;
+    }elsif($ref eq "HASH"){
+	    @pids = keys %$node_pid_map;
+    }else{
+	    @pids = @$node_pid_map;
+    }
     my $more_alive = 0;
     foreach my $pid(keys %$node_pid_map){
 	my $tmp_pid = $self->check_node_pid($node_idx,$pid, echo => 0);
@@ -390,16 +417,18 @@ sub wait_node_execute{
     return !$more_alive;
 }
 
-sub check_node_process{
+
+
+sub check_node_pname{
     my($self,$node_idx, $pname, @rest_args) = @_;
     my $cmd = "ps ax|grep -P \"$pname\"";
     my $output = $self->execute_on_node($node_idx,$cmd,@rest_args);
     if($output){
 	    if($output =~ m/^\s*(\d+)/){
-		    return $1;
+		    return {$1 => 1};
 	    }
     }
-    return 0;
+    return undef;
 }
 
 sub check_node_pid{
