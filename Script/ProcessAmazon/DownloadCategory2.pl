@@ -174,6 +174,43 @@ $cluster_pid_map = $cluster_manager->check_cluster_pname("wget.pl");
 $cluster_manager->wait_cluster_pid($cluster_pid_map);
 
 ################ process downloaded category product pages
+
+print ">>> parse the category product pages\n";
+$tmp_result = $cluster_manager->execute_on_cluster(
+	cmd_pattern => "[ -f " . LEAF_CATEGORY_DIR . "/x%s_parsed.json ] && echo 1",
+	cmd_args => $LETTER_SEQ
+);
+
+if(not $cluster_manager->all_nodes_true($tmp_result)){
+	$cluster_manager->sync_cluster_execute(
+		cmd_pattern => "ProcessCrawledPage.pl --wd=LeafCategory --target=x%s --parser=Amazon/CategoryPageParser",
+		cmd_args => $LETTER_SEQ
+	);
+}else{
+	print "[info] category pages are already parsed\n";
+}
+
+$cluster_pid_map = $cluster_manager->check_cluster_pname("CategoryPageParser");
+$cluster_manager->wait_cluster_pid($cluster_pid_map);
+
+###################### concatenate the parsed category product result
+print ">>> concatenate the parsed category product pages and upload to main node\n";
+if(not $cluster_manager->node_file_exist($main_node, LEAF_CATEGORY_DIR . "/category_item_profile.json")){
+	my $merged_file = LEAF_CATEGORY_DIR . "/category_item_profile.json";
+	$cluster_manager->cluster_cat(
+		remote_path_pattern => LEAF_CATEGORY_DIR . "/x%s_parsed.json",
+		remote_path_args => $LETTER_SEQ,
+		local_path => $merged_file
+	);
+	$cluster_manager->rsync_to_node(
+		$main_node, $merged_file, LEAF_CATEGORY_DIR
+	);
+}else{
+	print "[info] category page parsed result are already merged\n";
+}
+
+
+############### extract product id and generate the review page file
 # generate the item -> number of reviews file and concatenate to a single file
 if(not $cluster_manager->all_nodes_true($cluster_manager->execute_on_cluster( cmd_pattern => "[ -f " . LEAF_CATEGORY_DIR . "/x%s_asin_rp.csv ] && echo 1", cmd_args => $LETTER_SEQ))){
 	print ">>> generate asin review number file\n";
@@ -241,7 +278,7 @@ $cluster_manager->wait_cluster_pid($cluster_pid_map);
 ########################## parse the review pages
 print ">>> start to parse the review pages\n";
 $tmp_result = $cluster_manager->execute_on_cluster(
-	cmd_pattern => "[ -f " . REVIEW_DIR . "/x%s_linked ] && echo 1",
+	cmd_pattern => "[ -f " . REVIEW_DIR . "/x%s_linked.txt ] && echo 1",
 	cmd_args => $LETTER_SEQ
 );
 if(not $cluster_manager->all_nodes_true($tmp_result)){
@@ -274,7 +311,42 @@ if(not $cluster_manager->node_file_exist($main_node, REVIEW_DIR . "/review.json"
 	print "[warn] parsed reviewed data is already concatenated\n";
 }
 
-#
+########### just run some cleanning work
+
+########## separate the review text and rating
+print ">>> separate review and rating from the parsed review data\n";
+if(not $cluster_manager->node_file_exist($main_node, REVIEW_DIR . "/review_text.json")){
+	my $cmd = "FlattenReviewJSON.pl --json=" . REVIEW_DIR . "/review.json --rate=" . REVIEW_DIR . "/review_rate.csv --review=" . REVIEW_DIR . "/review_text.csv";
+	$cluster_manager->execute_on_node($main_node, $cmd);
+}else{
+	print "[info] review is already separted\n";
+}
+
+######### backup the data to local hard drive and cloud device
+######### only for those utilmate result
+my @bk_file_list = (
+	PRODUCT_DIR . "/asin.csv",
+	PRODUCT_DIR . "/item_profile.json",
+	PRODUCT_DIR . "/response_linked.txt",
+	PRODUCT_DIR . "/response_pos.csv",
+	PRODUCT_DIR . "/item_profile.json",
+	LEAF_CATEGORY_DIR . "/category_item_profile.json",
+	LEAF_CATEGORY_DIR . "/leaf_category.csv",
+	CATEGORY_DIR . "/category_tree.csv",
+	REVIEW_DIR . "/review.json",
+	REVIEW_DIR . "/review_rating.csv",
+	REVIEW_DIR . "/review_text.csv"
+);
+
+my $local_bk_dir = "/home/qzhao2/irkmwdex4-nfs/AmazonParsed/Ultimate/$node_name/";
+$cluster_manager->init_local_wd($local_bk_dir);
+foreach my $file (@bk_file_list){
+	$cluster_manager->rsync_from_node(
+		$main_node,$file,$local_bk_dir);
+}
+
+########### all done!!!!
+print ">>>>>>>>>>>>>>>>>>>>>>>> ALL DONE!!!! >>>>>>>>>>>>>>>>>>>>>>>>>\n";
 
 
 sub usage{
