@@ -25,11 +25,11 @@ sub new {
 	my %args = (@_);
 	@obj_attrs{keys %args} = values %args;
 	my $self = bless \%obj_attrs;
-        if($self->{cluster_wd}){
-            $self->init_cluster_wd($self->{cluster_wd});
-        }
         if($self->{local_wd}){
             $self->init_local_wd($self->{local_wd});
+        }
+        if($self->{cluster_wd}){
+            $self->init_cluster_wd($self->{cluster_wd});
         }
         # node_list and cluster_user is required
         if(!$self->{cluster_user} or !$self->{node_list}){

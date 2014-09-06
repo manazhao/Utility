@@ -38,7 +38,6 @@ my @cluster_node_list = (
 );
 my $LETTER_SEQ = [qw(aa ab ac ad ae af ag ah ai aj ak al am an)];
 
-my @node_file_suffix_map = qw(aa ab ac ad ae af);
 GetOptions("node-id=s" => \$node_id, "node-name=s" => \$node_name, "local-wd=s" => \$local_wd, "remote-wd=s" => \$remote_wd, "cluster-user=s" => \$cluster_user) or die $!;
 $node_id  and $node_name and $local_wd and $remote_wd and $cluster_user or usage();
 
@@ -209,7 +208,6 @@ if(not $cluster_manager->node_file_exist($main_node, LEAF_CATEGORY_DIR . "/categ
 	print "[info] category page parsed result are already merged\n";
 }
 
-
 ############### extract product id and generate the review page file
 # generate the item -> number of reviews file and concatenate to a single file
 if(not $cluster_manager->all_nodes_true($cluster_manager->execute_on_cluster( cmd_pattern => "[ -f " . LEAF_CATEGORY_DIR . "/x%s_asin_rp.csv ] && echo 1", cmd_args => $LETTER_SEQ))){
@@ -311,16 +309,40 @@ if(not $cluster_manager->node_file_exist($main_node, REVIEW_DIR . "/review.json"
 	print "[warn] parsed reviewed data is already concatenated\n";
 }
 
-########### just run some cleanning work
-
 ########## separate the review text and rating
 print ">>> separate review and rating from the parsed review data\n";
-if(not $cluster_manager->node_file_exist($main_node, REVIEW_DIR . "/review_text.json")){
-	my $cmd = "FlattenReviewJSON.pl --json=" . REVIEW_DIR . "/review.json --rate=" . REVIEW_DIR . "/review_rate.csv --review=" . REVIEW_DIR . "/review_text.csv";
-	$cluster_manager->execute_on_node($main_node, $cmd);
+if(not $cluster_manager->node_file_exist($main_node,REVIEW_DIR . "/review_text.csv")){
+	$tmp_result = $cluster_manager->execute_on_cluster(
+		cmd_pattern => "[ -f " . REVIEW_DIR . "/x%s_review.csv ] && echo 1",
+		cmd_args => $LETTER_SEQ
+	);
+	if(!$cluster_manager->all_nodes_true($tmp_result)){
+		print ">>> start to flatten review result to review text and rating\n";
+		my $cmd = "FlattenReviewJSON.pl --json=" . REVIEW_DIR . "/x%s_parsed.json --rate=" . REVIEW_DIR . "/x%s_rate.csv --review=" . REVIEW_DIR . "/x%s_review.csv";
+		$cluster_manager->sync_cluster_execute(
+			cmd_pattern => $cmd,
+			cmd_args => [$LETTER_SEQ,$LETTER_SEQ]
+		);
+	}
+
+	# now concatenate the review text and rating and upload to the main node
+	print ">>> start to concatenate review text and rating and upload to main node\n";
+	$cluster_manager->cluster_cat(
+		remote_path_pattern => REVIEW_DIR . "/x%s_review.csv",
+		remote_path_args => $LETTER_SEQ,
+		local_path => REVIEW_DIR . "/review_text.json"
+	);
+	$cluster_manager->rsync_to_node($main_node, REVIEW_DIR . "/review_text.csv", REVIEW_DIR . "/");
+	$cluster_manager->cluster_cat(
+		remote_path_pattern => REVIEW_DIR . "/x%s_rate.csv",
+		remote_path_args => $LETTER_SEQ,
+		local_path => REVIEW_DIR . "/review_rate.json"
+	);
+	$cluster_manager->rsync_to_node($main_node, REVIEW_DIR . "/review_rate.csv", REVIEW_DIR . "/");
 }else{
-	print "[info] review is already separted\n";
+	print "[warn] review data is already separated and concatenated\n";
 }
+
 
 ######### backup the data to local hard drive and cloud device
 ######### only for those utilmate result
