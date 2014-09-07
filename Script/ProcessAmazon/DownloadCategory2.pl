@@ -82,7 +82,7 @@ my $query_category_tree_pid;
 if(not $cluster_manager->node_file_exist($main_node, CATEGORY_TREE_FILE)){
 	$cmd =  "crawler_console retrieveAmazonCategory --start-node=$node_id --result-file=" . CATEGORY_TREE_FILE;
 	$query_category_tree_pid = $cluster_manager->execute_on_node_bg(
-		cmd_pattern => $cmd
+                $main_node,$cmd
 	);
 	if($query_category_tree_pid){
 		print "[info] start to query amazon product categry  on node-$main_node: $query_category_tree_pid\n";
