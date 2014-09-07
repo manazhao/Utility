@@ -102,32 +102,31 @@ if($node_pid_map){
 print "[info] generate leaf category list\n";
 $cmd = 'perl -lne "chomp;  if(/(^[^\t]+)\t$/){print \$1}"  ' . CATEGORY_TREE_FILE . " > " . LEAF_CATEGORY_FILE;
 if(not $cluster_manager->node_file_exist($main_node,LEAF_CATEGORY_FILE)){
-	$cluster_manager->execute_on_node($main_node,cmd_pattern => $cmd);
+	$cluster_manager->execute_on_node($main_node,$cmd);
 }else{
 	print "[info] " . LEAF_CATEGORY_FILE. " already exists\n";
 }
-
 
 ################ now  generate category product url
 print ">>> generate category product page url\n";
 $cmd = "cat " . LEAF_CATEGORY_FILE . " |cut -f1 -d\\| | GenerateCategoryProductURL.pl > " . CATEGORY_PRODUCT_URL_FILE;
 if(not $cluster_manager->node_file_exist($main_node,CATEGORY_PRODUCT_URL_FILE)){
-	$cluster_manager->execute_on_node($main_node,cmd_pattern => $cmd);
+	$cluster_manager->execute_on_node($main_node,$cmd);
 }else{
 	print "[info] " . CATEGORY_PRODUCT_URL_FILE. " already exists\n";
 }
 
 ############# copy file to local
 print ">>> copy product url file to local\n";
-if(not $cluster_manager->local_file_exist($main_node,CATEGORY_PRODUCT_URL_FILE,echo=>0)){
+if(not $cluster_manager->local_file_exist(CATEGORY_PRODUCT_URL_FILE,echo=>0)){
 	$cluster_manager->rsync_from_node(
-		remote_path_pattern => CATEGORY_PRODUCT_URL_FILE,
-		local_path => LEAF_CATEGORY_DIR
+		 $main_node,
+		 CATEGORY_PRODUCT_URL_FILE,
+		 LEAF_CATEGORY_DIR . "/"
 	);
 }else{
 	print "[info] " . CATEGORY_PRODUCT_URL_FILE. " already exists\n";
 }
-
 ############### split the url list and distribute to cluster
 print ">>> split url and distribute to cluster\n";
 my $tmp_result = $cluster_manager->execute_on_cluster(
@@ -153,7 +152,7 @@ $tmp_result = $cluster_manager->execute_on_cluster(
 	cmd_pattern => "[ -d " . LEAF_CATEGORY_DIR . "/x%s_pages ] && echo 1",
 	cmd_args => $LETTER_SEQ
 );
-if(not !$cluster_manager->all_nodes_true($tmp_result)){
+if(not $cluster_manager->all_nodes_true($tmp_result)){
 	$cluster_manager->execute_on_cluster(
 		cmd_pattern => "mkdir -p " . LEAF_CATEGORY_DIR . "/x%s_pages",
 		cmd_args => $LETTER_SEQ
@@ -207,6 +206,8 @@ if(not $cluster_manager->node_file_exist($main_node, LEAF_CATEGORY_DIR . "/categ
 }else{
 	print "[info] category page parsed result are already merged\n";
 }
+#################### human inspection on the downloaded pages needed 
+exit(1);
 
 ############### extract product id and generate the review page file
 # generate the item -> number of reviews file and concatenate to a single file

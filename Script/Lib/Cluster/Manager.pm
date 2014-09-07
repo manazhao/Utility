@@ -51,7 +51,7 @@ sub init_local_wd{
     my $dir = shift;
     if(not -d $dir){
         print "[info] create local working directory: $dir\n";
-        $self->execute_on_local("mkdir -p $dir");
+        $self->execute_on_local("mkdir -p $dir", no_lcd => 1);
     }
     $self->{local_wd} = $dir;
 }
@@ -59,7 +59,7 @@ sub init_local_wd{
 sub init_cluster_wd{
     my($self,$dir) = @_;
     my $cmd = "[ ! -d $dir ] && mkdir -p $dir";
-    $self->execute_on_cluster(cmd_pattern => $cmd);
+    $self->execute_on_cluster(cmd_pattern => $cmd, no_lcd => 1, no_rcd=>1);
     $self->{cluster_wd} = $dir;
 }
 
@@ -127,7 +127,7 @@ sub rsync_from_node{
 	    $node_path = $self->{cluster_wd} . "/" . $node_path;
     }
     my $cmd = "rsync -avrz $self->{cluster_user}\@$node:$node_path $local_path 1>/dev/null 2>&1";
-    _execute_cmd($cmd,%rest_args);
+    $self->execute_on_local($cmd,%rest_args);
 }
 
 sub rsync_to_node{
@@ -247,27 +247,31 @@ sub combine_multiple_command{
 }
 
 sub execute_on_local{
-    my ($self,$cmd,@rest_args) = @_;
-    if($self->{local_wd}){
+    my ($self,$cmd,%rest_args) = @_;
+    my %default_args = (no_lcd => 0);
+    move_hash_values(\%rest_args,\%default_args,[keys %default_args]);
+    if($self->{local_wd} and !$default_args{no_lcd}){
         $cmd = "cd $self->{local_wd}; $cmd";
     }
-    return _execute_cmd(($cmd,@rest_args));
+    return _execute_cmd(($cmd,%rest_args));
 }
 
 sub execute_on_node{
     my($self,$node_idx,$cmd,%rest_args) = @_;
     my %default_args = (
-        redir_option => ""
+        redir_option => "",
+	no_lcd => 0,
+	no_rcd => 0
     );
-    move_hash_values(\%rest_args,\%default_args,[qw(redir_option)]);
+    move_hash_values(\%rest_args,\%default_args,[qw(redir_option no_lcd no_rcd)]);
     my $redir_option = $default_args{redir_option};
     my $node_addr = $self->{node_list}->[$node_idx];
     # set the working dir if it is specified
-    if($self->{cluster_wd}){
+    if($self->{cluster_wd} and not $default_args{no_rcd}){
         $cmd = "cd $self->{cluster_wd}; $cmd";
     }
     my $ssh_cmd = "ssh $self->{cluster_user}\@$node_addr '$cmd' $redir_option";
-    if($self->{local_wd}){
+    if($self->{local_wd} and not $default_args{no_lcd}){
 	    $ssh_cmd = "cd $self->{local_wd}; " . $ssh_cmd;
     }
     return _execute_cmd(($ssh_cmd,%rest_args));
