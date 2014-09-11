@@ -33,7 +33,7 @@ if(-f $result_position_file){
 	open POSITION_FILE,"<", $result_position_file or die $!;
 	while(<POSITION_FILE>){
 		chomp;
-		my ($file_name, $pos) = split /\,/;
+		my ($file_name, $pos) = split /\t/;
 		$file_pos_map{$file_name} = $pos;
 	}
 	close POSITION_FILE;

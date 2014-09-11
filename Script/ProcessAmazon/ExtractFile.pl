@@ -19,7 +19,7 @@ my %pos_map = ();
 open POS_FILE, "<", $pos_file or die $!;
 while(<POS_FILE>){
 	chomp;
-	my($file_name,$pos) = split /\,/;
+	my($file_name,$pos) = split /\t/;
 	$pos_map{$file_name} = $pos;
 }
 close POS_FILE;

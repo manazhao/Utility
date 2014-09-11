@@ -1,31 +1,33 @@
 #!/usr/bin/perl
+# generate the product -> number of review pages file
+# this file will be used by review downloader which expects product id and the number of pages
 #
+
 use strict;
 use warnings;
 use JSON;
-my %item_map = ();
+use Getopt::Long;
+use File::Basename;
 
-while(<>){
-	chomp;
-	my $json = decode_json($_);
-	my $items = $json->{"items"};
-	foreach my $item (@$items){
-		my $asin = $item->{"asin"};
-		next if exists $item_map{$asin};
-		if(exists $item->{"rc"} and not $item->{rc} eq ""){
-			my $rvwCnt = $item->{rc};
-			$rvwCnt =~ s/\,//g;
-			my $num_pages = int($rvwCnt/10);
-			if($rvwCnt % 10){
-				$num_pages++;
-			}
-			$item_map{$asin} = $num_pages;
-		}
-	}
+# category product profile file which contains 
+# basic information about products, e.g. asin (id), # of reviews
+my $json_file;
+my $rp_file;
+
+GetOptions("json-file=s" => \$json_file, "rp-file=s" => \$rp_file) or die $!;
+$json_file and $rp_file or usage();
+-f $json_file and -d dirname($rp_file) or die "check json and rp file";
+my $cmd ="JSON2CSV.pl --json=$json_file --csv=$rp_file --field=\"id,rc\"";
+print $cmd . "\n";
+`$cmd`;
+
+sub usage{
+	my $usage = <<EOF;
+$0: [options]
+	--json-file		item profile in json format
+	--rp-file		output review page number file
+	
+EOF
+	print $usage;
+	exit(1);
 }
-
-
-while(my($asin,$num_pages) = each %item_map){
-	print join(",", ($asin, $num_pages)) . "\n";
-}
-
