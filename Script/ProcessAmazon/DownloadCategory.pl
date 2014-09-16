@@ -366,7 +366,7 @@ my @bk_file_list = (
 	REVIEW_DIR . "/review_text.csv"
 );
 
-my $local_bk_dir = "/home/qzhao2/irkmwdex4-nfs/AmazonParsed/Ultimate/$node_name/";
+my $local_bk_dir = "/home/manazhao/irkmwdex4/AmazonParsed/Final/$node_name/";
 $cluster_manager->init_local_wd($local_bk_dir);
 foreach my $file (@bk_file_list){
 	$cluster_manager->rsync_from_node(
@@ -379,7 +379,7 @@ print ">>>>>>>>>>>>>>>>>>>>>>>> ALL DONE!!!! >>>>>>>>>>>>>>>>>>>>>>>>>\n";
 
 sub usage{
 	print <<END;
-	$0:
+$0:
    --node-id		category Id
    --node-name		category name
    --local-wd		local working directory
