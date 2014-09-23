@@ -7,6 +7,7 @@ use strict;
 use warnings;
 use Getopt::Long;
 use JSON;
+use Data::Dumper;
 
 my $json_file;
 my $field_list;
@@ -21,19 +22,20 @@ open my $csv_fh, ">", $csv_file or die $!;
 
 my @fields = split /\,/, $field_list;
 
-$header and print $csv_fh join(",",@fields) . "\n";
+my %fname_idx_map = ();
+# number the field names
+@fname_idx_map{@fields} = 0..$#fields;
 
+$header and print $csv_fh join("\t",@fields) . "\n";
+
+my @field_vals = ("")x@fields;
 while(<$json_fh>){
 	chomp;
 	my $json_obj = decode_json($_);
-	my @field_vals = ();
 	foreach my $field(@fields){
-		if(exists $json_obj->{$field}){
-			push @field_vals, $json_obj->{$field};
-		}else{
-			push @field_vals,"";
-		}
-	} print $csv_fh join(",",@field_vals) . "\n";
+		$field_vals[$fname_idx_map{$field}] = defined $json_obj->{$field} ? $json_obj->{$field} : "";
+	} 
+	print $csv_fh join("\t",@field_vals) . "\n";
 }
 
 close $json_fh;
