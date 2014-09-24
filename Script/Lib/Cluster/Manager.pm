@@ -155,7 +155,7 @@ sub rsync_to_cluster{
     my $local_path_pattern = $default_args{local_path_pattern};
     my $local_path_args = $default_args{local_path_args};
     my $remote_path = $default_args{remote_path};
-    $local_path_pattern and $remote_path or die "local path and remote path must be provided";
+    defined $local_path_pattern and defined $remote_path or die "local path and remote path must be provided";
     foreach my $i( 0 .. @{$self->{node_list}} - 1){
         my $local_path = $local_path_args ? sprintf($local_path_pattern,$local_path_args->[$i]) : $local_path_pattern;
         $self->rsync_to_node($i,$local_path,$remote_path,%rest_args);

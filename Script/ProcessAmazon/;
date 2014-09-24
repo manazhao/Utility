@@ -1,0 +1,20 @@
+#!/usr/bin/perl
+# index product data in solr which enables full text search
+#
+use strict;
+use warnings;
+use JSON;
+
+my $solr_update_url = "http://localhost:8983/solr/update";
+my @json_arr = ();
+while(<>){
+	chomp;
+	my $json_obj = decode_json($_);
+	push @json_obj, $json_obj;
+
+}
+
+
+
+
+
