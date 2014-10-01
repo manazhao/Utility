@@ -24,8 +24,9 @@ my $local_wd = "/tmp/amazon/crawl";
 my $remote_wd = "/home/tmp/manazhao/amazon/crawl";
 my $cluster_user;
 my $url_file;
+my $wait = 2;
 
-GetOptions("local-wd=s" => \$local_wd, "remote-wd=s" => \$remote_wd, "cluster-user=s" => \$cluster_user,"url-file=s" => \$url_file) or die $!;
+GetOptions("local-wd=s" => \$local_wd, "remote-wd=s" => \$remote_wd, "cluster-user=s" => \$cluster_user,"url-file=s" => \$url_file,"wait=i"=>\$wait) or die $!;
 $local_wd and $remote_wd and $cluster_user and $url_file or usage();
 -f $url_file or die "url file - $url_file does not exist";
 
@@ -43,7 +44,7 @@ $cluster_manager->split_and_distribute($url_file,"",split_prefix=>"x");
 # now run the crawler
 my $log_file = "nohup_wget.log";
 my $cluster_pid_map = $cluster_manager->execute_on_cluster_bg(
-	cmd_pattern => "wget.pl --url-file=x%s --wait=3",
+	cmd_pattern => "wget.pl --url-file=x%s --wait=$wait",
 	cmd_args => $LETTER_SEQ,
 	log_file => $log_file
 );
@@ -60,6 +61,7 @@ $0:
 	--remote-wd		remote working directory
 	--cluster-user 	user to login cluster nodes (passwordless ssh access is required)
 	--url-file		file containing urls to download
+	--wait			number of seconds wait between two wget requests
 
 END
 	exit(1);
