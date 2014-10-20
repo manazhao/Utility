@@ -25,12 +25,11 @@ my %leaf_node_map = ();
 
 while(<INPUT_FILE>){
 	chomp;
-	my ($cat_str,$c_nodes_str) = split /\t/;
+	my ($cat_str,@p_cats) = split /\t/;
 	my ($pid, $pname) = split /\|/, $cat_str;
 	$node_name_map{$pid} = $pname;
-	if($c_nodes_str){
-		my @splits = split /\,/, $c_nodes_str;
-		foreach(@splits){
+	if(scalar @p_cats){
+		foreach(@p_cats){
 			my($cid,$cname) = split /\|/;
 			$node_parent_map{$cid} = $pid;
 		}
@@ -40,16 +39,18 @@ while(<INPUT_FILE>){
 }
 
 close INPUT_FILE;
-foreach my $lcat (keys %leaf_node_map){
+foreach my $cid (keys %node_name_map){
 	# identify all parent nodes
 	my @parent_nodes = ();
-	my $lcatName = $node_name_map{$lcat};
-	my $cur_node = $lcat;
+	my $lcatName = $node_name_map{$cid};
+	my $cur_node = $cid;
+	$cid =~ m/^\d+$/ or print $cid . "\n";
 	while(exists $node_parent_map{$cur_node}){
 		$cur_node = $node_parent_map{$cur_node};
-		unshift(@parent_nodes, $node_name_map{$cur_node});
+		unshift(@parent_nodes, $cur_node);
 	}
-	print OUTPUT_FILE join("\t",($lcat,$lcatName, "/".join("/",@parent_nodes))) . "\n";
+	my $is_leaf = exists $leaf_node_map{$cid} ? 1 : 0;
+	print OUTPUT_FILE join("\t",($cid,$lcatName,$is_leaf, "/".join("/",@parent_nodes))) . "\n";
 }
 
 close OUTPUT_FILE;

@@ -17,9 +17,24 @@ my $rp_file;
 GetOptions("json-file=s" => \$json_file, "rp-file=s" => \$rp_file) or die $!;
 $json_file and $rp_file or usage();
 -f $json_file and -d dirname($rp_file) or die "check json and rp file";
-my $cmd ="JSON2CSV.pl --json=$json_file --csv=$rp_file --field=\"id,rc\"";
-print $cmd . "\n";
-`$cmd`;
+
+open my $json_fh, "<", $json_file or die $!;
+open my $rp_fh, ">", $rp_file or die $!;
+
+while(<$json_fh>){
+	my $json_obj = decode_json($_);
+	exists $json_obj->{id} or next;
+	my $page = 0;
+	if($json_obj->{rc}){
+		my $rc_str = $json_obj->{rc};
+		$rc_str =~ s/\,//g;
+		$page = int($rc_str/10) + 1;
+	}
+	print $rp_fh $json_obj->{id} . "\t" . $page . "\n";
+}
+close $rp_fh;
+close $json_fh;
+
 
 sub usage{
 	my $usage = <<EOF;
